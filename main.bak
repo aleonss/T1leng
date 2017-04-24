@@ -1,0 +1,155 @@
+#lang play
+(require "machine.rkt")
+;(print-only-errors #t) 
+;;;;;;;;;;;;;;;;;;;;;;;
+;; Language definition
+;;;;;;;;;;;;;;;;;;;;;;;
+
+#|
+<s-expr> ::= <num>
+         | <id>
+         | {+ <s-expr> <s-expr>}
+         | {with {<s-expr> : <type> <s-expr>} <s-expr>}
+         | {fun {<id>  : <s-expr>} [: <type>] <expr>}
+         | {<expr> <expr>}         
+ 
+<type> ::= Num
+         | {<type> -> <type>}}
+|#
+(deftype Expr
+  (num n)
+  (add l r)
+  (id s) 
+  (fun id targ body tbody)
+  (fun-db body)
+  (acc n) ;Se usa para la pregunta 3
+  (app fun-id arg-expr))
+
+(deftype Type
+  (TNum)
+  (TFun arg ret))
+
+
+(define (parse-type s-expr)
+  (match s-expr
+    ['Num (TNum)]
+    [(list arg '-> ret ) (TFun (parse-type arg) (parse-type ret))]
+    [else (error "Parse error" s-expr)]
+    )
+  )
+
+(define (parse s-expr)
+  (match s-expr
+    [(? number?) (num s-expr)]
+    [(list '+ l r) (add (parse l) (parse r))]
+    
+    [(list 'with (list id ': idtype idval) body) (app (fun id (parse-type idtype)
+                                                      (parse body) #f)
+                                                 (parse idval))]
+
+    [(? symbol?) (id s-expr)]
+    [(list 'fun (list id ': idtype) ': bodytype body) (fun id (parse-type idtype) (parse body) (parse-type bodytype))]
+    [else #f]
+    
+ ) )
+
+
+
+(define (deBruijn expr)#f)
+(define (compile expr) #f)
+
+(define (typeof expr)
+    (match expr
+     [(num n) (if (number? n) (TNum) #f)]
+     [(add l r) (if (equal? (typeof l) (TNum))
+                    (if (equal? (typeof r) (TNum))
+                        (TNum)
+                        (error "Type error in expression add position 2: expected Num found "  (typeof r)))
+                    (error "Type error in expression add position 1: expected Num found "  (typeof l)))
+                    ]
+     [(fun id idtype body bodytype)
+                '()
+               
+                    ]      
+
+     [else (error "Type error in expression" expr)]
+ ))
+
+(define (typecheck s-expr) #f)
+(define (typed-compile s-expr) #f)
+
+
+;vs
+Para una función con el tipo de retorno anotado, se valida que la expresión del cuerpo tenga el mismo tipo que el tipo de retorno declarado.
+Para una función sin el tipo de retorno anotado, el tipo resultante considera el tipo calculado del cuerpo de la función.
+Para la aplicación de función se valida que la expresión en posición de función es efectivamente una función y que el tipo de la expresión de argumento de la aplicación coincide con el tipo esperado del argumento de la función.
+
+(fun 'x (TNum) (num 5) (TNum))
+
+(test (typeof (parse '{fun {x : Num} : Num 5}))
+  (TFun (TNum) (TNum)) )
+
+(test (typeof (parse '{+ 1 3})) (TNum))
+(test (typeof (parse '{fun {x : Num} x}))
+  (TFun (TNum) (TNum)) )
+(test/exn (typeof (parse '{fun {x : Num} : {Num -> Num} 10}))
+  "Type error in expression fun position 1: expected {Num -> Num} found Num" )
+(test/exn (typeof (parse '{{fun {x : Num} : Num {+ x x}} {fun {x : Num} : Num 5}}))
+  "Type error in expression app position 2: expected Num found {Num -> Num}" )
+(test/exn (typeof (parse 'y))
+  "Type error: No type for identifier: y"  )
+
+
+
+
+
+;;bssssssssssssssssssssss
+
+;; typeof
+(test (typeof (parse '{+ 1 3})) (TNum))
+(test (typeof (parse '{fun {x : Num} : Num 5}))
+  (TFun (TNum) (TNum)) )
+(test (typeof (parse '{fun {x : Num} x}))
+  (TFun (TNum) (TNum)) )
+(test/exn (typeof (parse '{fun {x : Num} : {Num -> Num} 10}))
+  "Type error in expression fun position 1: expected {Num -> Num} found Num" )
+(test/exn (typeof (parse '{{fun {x : Num} : Num {+ x x}} {fun {x : Num} : Num 5}}))
+  "Type error in expression app position 2: expected Num found {Num -> Num}" )
+(test/exn (typeof (parse 'y))
+  "Type error: No type for identifier: y"  )
+
+
+
+;; parse-type
+(test (parse-type '{Num -> Num}) (TFun (TNum) (TNum)))
+(test (parse-type '{{Num -> Num} -> Num}) (TFun (TFun (TNum) (TNum)) (TNum)) )
+(test (parse-type '{{Num -> Num} -> {Num -> Num}}) (TFun (TFun (TNum) (TNum)) (TFun (TNum) (TNum))) )
+(test/exn (parse-type '{ -> Num}) "Parse error")
+
+
+;; parse
+(test (parse '{+ 1 3})      (add (num 1) (num 3)))
+(test (parse '{with {y : Num 2} {+ x y}})   (app (fun 'y (TNum) (add (id 'x) (id 'y)) #f)(num 2)))
+(test (parse '{with {x : Num 5}   {+ x 3}})  (app (fun 'x (TNum)(add (id 'x) (num 3)) #f)  (num 5)))
+(test (parse '{fun {x : Num} : Num {+ x 1}}) (fun 'x (TNum) (add (id 'x) (num 1)) (TNum)) )
+
+
+
+
+
+
+#|
+{with {x : Num 5} {+ x 3}}
+ 
+{fun {x : Num} : Num 
+  {+ x 3}}
+ 
+{fun {x : Num}
+  {+ x 3}}
+(0.6) Defina la función (parse-type s-expr) que parsea solo la gramática de tipos. Ademas en caso de error, debe retornar el error “Parse error”
+> (parse-type '{{Num -> Num} -> Num})
+(TFun (TFun (TNum) (TNum)) (TNum))
+ 
+> (parse-type '{Num ->  })
+"Parse error"
+|#
