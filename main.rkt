@@ -1,6 +1,6 @@
 #lang play
 (require "machine.rkt")
-;(print-only-errors #t) 
+(print-only-errors #t) 
 ;;;;;;;;;;;;;;;;;;;;;;;
 ;; Language definition
 ;;;;;;;;;;;;;;;;;;;;;;;
@@ -159,14 +159,6 @@
 
 
 
-;vs
-
-
-;;bssssssssssssssssssssss
-
-(print-only-errors #t)
-'(todo fain?)
-
 
 ;; parse-type
 (test (parse-type 'Num) (TNum))
@@ -206,7 +198,6 @@
 (test (typeof (parse '{+ {+ 1 2} {+ 4 5}})) (TNum))
 
 (test (typeof (parse '{fun {x : Num} : Num 5}))  (TFun (TNum) (TNum)) )
-(test (typeof (parse '{fun {x : Num} x}))  (TFun (TNum) (TNum)) )
 (test (typeof (parse '{fun {x : Num} : Num {+ 2 3}})) (TFun (TNum) (TNum)))
 
 
