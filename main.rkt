@@ -148,7 +148,8 @@
 (define (type2sym type)
   (match type
     [(TNum) "Num"]
-    [(TFun l r) (~a (list  (type2sym l) "->" (type2sym l)  ))]
+    ;[(TFun l r) (~a (list  (type2sym l) "->" (type2sym l)  ))]
+        [(TFun l r) (string-append "("(string-append (type2str l)  (string-append " -> " (string-append (type2str l) ")"))))]
     [(id x) (symbol->string x)]
     [TNum "Num"]
    ))
@@ -156,7 +157,7 @@
 
 (define (typecheck s-expr)
  (string->symbol (type2sym (typeof (parse s-expr)))))
-
+  ;(type2sym (typeof (parse s-expr))))
 
 ;typecheck
 (test (typecheck '3) 'Num)
