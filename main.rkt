@@ -70,8 +70,8 @@
      [(add l r) (if (equal? (typeof l) (TNum))
                     (if (equal? (typeof r) (TNum))
                         (TNum)
-                        (error "Type error in expression add position 2: expected Num found "  (typeof r)))
-                    (error "Type error in expression add position 1: expected Num found "  (typeof l) ))
+                        (error (string-append "Type error in expression + position 2: expected Num found "  (type2str (typeof r)))))
+                    (error (string-append "Type error in expression + position 1: expected Num found " (type2str (typeof l)) )))
                     ]
      [(fun id idtype body bodytype)
       (let ([newbody (replaceFun id idtype body)])
@@ -79,20 +79,22 @@
             (if (equal? newbody idtype)
                 (TFun idtype newbody);;
                 (if (add? body)
-                    (if (equal? idtype (typeof body))
-                        (TFun idtype (typeof body))
+                    (if (and (equal? idtype (TNum)) (noFreeId newbody))
+                        (TFun idtype (TNum))
                         (error (string-append "Type error in expression fun position 2: expected " (string-append (type2str idtype) (string-append " found "(type2str newbody ))))))
                     (error (string-append "Type error in expression fun position 2: expected " (string-append (type2str idtype) (string-append " found "(type2str newbody ))))))
                 )
             
-            (if (equal? bodytype idtype)
+            (if (and (equal? bodytype idtype) (noFreeId newbody))
                 (TFun idtype bodytype)
                 (
                  error (string-append "Type error in expression fun position 1: expected " (string-append  (type2str bodytype) (string-append " found " (type2str idtype)))))
                 )
             
             )
-        ) ]      
+        ) ]  
+      
+   
      [(app l r) (if (fun? l)
                     (let ([funl (typeof l)])
                       (if (fun? r)
@@ -114,17 +116,21 @@
 
 
 
-
-
-
+(define (noFreeId expr)
+  (match expr
+    [(id x) (error (string-append "Type error: No type for identifier: " (type2str expr)))]
+    [(TFun l r) (and (noFreeId l) (noFreeId r))]
+    [TNum #t]
+    ))
 
 (define (replaceFun idx idtype body)
   (match body
-    [(id x) (if (equal? x idx) idtype "error?")]
+    [(id x) (if (equal? x idx) idtype body)]
     [(add l r) (TFun (replaceFun idx idtype l) (replaceFun idx idtype r))] ;qual xd
     [(num n) TNum]
     )
   )
+
 (define (type2str type)
   (match type
     [(TNum) "Num"]
@@ -142,7 +148,7 @@
 (define (type2sym type)
   (match type
     [(TNum) "Num"]
-    [(TFun l r) (~a (list  (type2sym l)   "->" (type2sym l)  ))]
+    [(TFun l r) (~a (list  (type2sym l) "->" (type2sym l)  ))]
     [(id x) (symbol->string x)]
     [TNum "Num"]
    ))
@@ -152,6 +158,11 @@
  (string->symbol (type2sym (typeof (parse s-expr)))))
 
 
+;typecheck
+(test (typecheck '3) 'Num)
+(test (typecheck  '{fun {f : Num} : Num 10}) '{Num -> Num})
+ 
+
 
 
 
@@ -160,7 +171,7 @@
 
 ;;bssssssssssssssssssssss
 
-;(print-only-errors #t)
+(print-only-errors #t)
 '(todo fain?)
 
 
@@ -207,30 +218,19 @@
 
 
 
-
-
-(parse '{fun {x : Num} x})
 (test (typeof (parse '{fun {x : Num} x}))  (TFun (TNum) (TNum)) )
-(parse '{with {x : Num 5} x})
 (test (typeof (parse '{with {x : Num 5} x}))  (TFun (TNum) (TNum)) )
 
-(parse '{{fun {x : Num} : Num {+ 2 3}} 5})
-(test (typeof (parse '{{fun {x : Num} : Num {+ 2 3}} 5}) ) (TFun (TNum) (TNum)))
-(parse '{with {x : Num 5} {+ 2 3}})                             
+(test (typeof (parse '{{fun {x : Num} : Num {+ 2 3}} 5}) ) (TFun (TNum) (TNum)))          
 (test (typeof (parse '{with {x : Num 5} {+ 2 3}}) ) (TFun (TNum) (TNum)))
 
-(parse '{{fun {x : Num} : Num {+ 2 x}} 5})
-(test (typeof (parse '{{fun {x : Num} : Num {+ 2 x}} 5}) ) (TFun (TNum) (TNum)))
-
-
-(parse '{with {x : Num 5} {+ 2 x}})                               ;;;;;;;;;;;;;;
-"aka v"
+(test (typeof (parse '{{fun {x : Num} : Num {+ 2 x}} 5}) ) (TFun (TNum) (TNum)))                        
 (test (typeof (parse '{with {x : Num 5} {+ 2 x}}) ) (TFun (TNum) (TNum)))
-"aka ^"
 
-
-
-
+(test/exn (typeof (parse '{{fun {x : Num} : Num {+ 2 y}} 5}) )
+          "Type error: No type for identifier: y")
+(test/exn (typeof (parse '{with {x : Num 5} {+ 2 y}}) )
+          "Type error: No type for identifier: y")
 
 
 
@@ -243,7 +243,7 @@
 (test/exn (typeof (parse 'y))
   "Type error: No type for identifier: y"  )
 
-
+(test/exn (typeof (parse '{+ 2 {fun {x : Num} : Num x}}))  "Type error in expression + position 2: expected Num found {Num -> Num}")
 
 ;typecheck
 (test (typecheck '3) 'Num)
