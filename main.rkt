@@ -1,6 +1,6 @@
 #lang play
 (require "machine.rkt")
-(print-only-errors #t) 
+;(print-only-errors #t) 
 ;;;;;;;;;;;;;;;;;;;;;;;
 ;; Language definition
 ;;;;;;;;;;;;;;;;;;;;;;;
@@ -57,7 +57,7 @@
  ) )
 
 
-(define (deBruijn expr)#f)
+;(define (deBruijn expr)#f)
 (define (compile expr) #f)
 ;(define (typeof expr)
 ;(define (typecheck s-expr) #f)
@@ -108,6 +108,9 @@
                     )]
       [else (error (string-append "Type error: No type for identifier: " (type2str expr)))]
  ))
+
+
+
 ;Para una función con el tipo de retorno anotado, se valida que la expresión del
 ;     cuerpo tenga el mismo tipo que el tipo de retorno declarado.
 ;Para una función sin el tipo de retorno anotado, el tipo resultante considera el tipo calculado del cuerpo de la función.
@@ -126,11 +129,18 @@
 (define (replaceFun idx idtype body)
   (match body
     [(id x) (if (equal? x idx) idtype body)]
-    [(add l r) (TFun (replaceFun idx idtype l) (replaceFun idx idtype r))] ;qual xd
+    [(add l r) (TFun (replaceFun idx idtype l) (replaceFun idx idtype r))]
+    [(fun idx2 idtype2 body2 bodytype2) (if (equal? idx idx2)
+                                            (if (equal? (replaceFun idx2 idtype2 body2 )bodytype2 )
+                                                (TFun idtype (replaceFun idx2 idtype2 body2))
+                                                (print (typeof body)))
+                                            (if (equal? (typeof body) idtype )
+                                                (TFun idtype (replaceFun idx2 idtype2 body2)) (print (typeof body)))
+                                            )]
     [(num n) TNum]
     )
   )
-
+ 
 (define (type2str type)
   (match type
     [(TNum) "Num"]
@@ -158,6 +168,50 @@
 
 
 
+(define (DBacc expr idx n)
+  (match expr
+     [(num n) expr]
+     [(add l r) (add (DBacc l idx n) (DBacc r idx n))]
+     [(fun id idtype body bodytype) (if (or (equal? id idx) (equal? #f idx))
+                                        (fun-db (DBacc body id n))
+                                        (fun-db (DBacc (DBacc body idx (+ n 1)) id n))
+                                        ) ]
+     [(app l r) (app (DBacc l idx n) (DBacc r idx n))]
+    
+     [(id x) (if (equal? #f idx)
+                 (error (string-append "Free identifier: " (type2str expr)))
+                 (if (equal? x idx)
+                     (acc n)
+                     (acc (- n 1))
+                     ))]
+    [else expr]
+    )
+  )
+
+(define (deBruijn expr)
+  (DBacc expr #f 0)
+  )
+
+
+;;bs
+
+;; deBruijn
+
+(app (fun 'x (TNum) (app (fun     'y (TNum) (add (id 'y) (id 'x)) #f) (add (id 'x) (num 1))) #f) (num 5))
+(app (fun-db        (app (fun-db            (add (acc 0) (acc 1))   ) (add (acc 0) (num 1)))   ) (num 5))
+
+(app (fun-db        (app (fun-db            (add (acc 2) (acc 1)))    (add (acc 0) (num 1)))) (num 5)) 
+
+(test (deBruijn (num 3)) (num 3))
+(test (deBruijn (parse '{with {x : Num 5}  {with  {y : Num  {+ x 1}} {+ y x}}}))
+      (app (fun-db (app (fun-db (add (acc 0) (acc 1))) (add (acc 0) (num 1)))) (num 5)))
+(test/exn (deBruijn (parse 'x)) "Free identifier: x")
+
+
+
+"aaaaaaaaaaaaaaaaaaaaaj xd"
+
+
 
 
 ;; parse-type
@@ -171,7 +225,8 @@
 (test/exn (parse-type '{}) "Parse error")
 (test/exn (parse-type '{ -> Num}) "Parse error")
 (test/exn (parse-type '{Num -> Num -> Num}) "Parse error")
-
+(test/exn (parse-type '{{Num -> {Num -> Num}} -> {{{ -> Num} -> Num} -> Num}}) "Parse error")
+      
 ;; parse
 (test (parse '{+ 1 3})            (add (num 1) (num 3)))
 (test (parse '{+ 1 {+ 1 1}})      (add (num 1) (add (num 1) (num 1))))
@@ -184,8 +239,11 @@
 
 (test (parse '{fun {x : Num} : Num {+ x 1}}) (fun 'x (TNum) (add (id 'x) (num 1)) (TNum)) )
 (test (parse '{fun {x : Num} : Num 6}) (fun 'x (TNum)  (num 6) (TNum)) )
+(test (parse '{fun {x : Num} : Num {+ x x}}) (fun 'x (TNum) (add (id 'x) (id 'x)) (TNum)) )
+(test (parse '{{fun {x : Num} : Num {+ x x}} 5}) (app (fun 'x (TNum) (add (id 'x) (id 'x)) (TNum)) (num 5)))
 (test (parse '{{fun {x : Num} : Num {+ x x}} {fun {x : Num} : Num 5}})  (app (fun 'x (TNum) (add (id 'x) (id 'x)) (TNum)) (fun 'x (TNum) (num 5) (TNum))))
 (test (parse '{fun {x : Num} : Num {+ 2 3}}) (fun 'x (TNum) (add (num 2) (num 3)) (TNum)))
+(test (parse '{fun {f : {Num -> Num}} : {Num -> Num} {fun {g : Num} : Num 10}}) (fun 'f (TFun (TNum) (TNum)) (fun 'g (TNum) (num 10) (TNum)) (TFun (TNum) (TNum))))
 
 (test/exn  (parse '{+ 1})     "Parse error")
 (test/exn  (parse '{with {y : Num 2} })  "Parse error")
@@ -231,7 +289,32 @@
 
 ;typecheck
 (test (typecheck '3) 'Num)
+(test (typecheck  '{+ 2 2}) 'Num )
 (test (typecheck  '{fun {f : Num} : Num 10}) '{Num -> Num})
- 
+(test (typecheck '{{fun {x : Num} : Num {+ 2 1}} 5}) '(Num -> Num))
+(test (typecheck '{{fun {x : Num} : Num {+ 2 x}} 5})  '(Num -> Num))
+(test (typecheck '{{fun {x : Num} : Num {+ x x}} 5}) '(Num -> Num))
+(test (typecheck '{{fun {x : Num} : Num {+ x x}} {+ 2 3}}) '(Num -> Num))
+(test (typecheck '{fun {x : Num} : Num {+ x x}}) '(Num -> Num))
+
+(test (typecheck '{{fun {x : Num} : Num {+ 3 {+ x {+ 5 {+ 2 x}}}}} 5})  '(Num -> Num))
+(test (typecheck  '{fun {f : {Num -> Num}} : {Num -> Num} {fun {g : Num} : Num 10}}) '((Num -> Num) -> (Num -> Num)))
+
+(test (typecheck '{with {x : Num 5} {+ x 3}}) '(Num -> Num))
+(test (typecheck '{with {x : Num 5} x}) '(Num -> Num))
+
 (test/exn (typecheck  '{+ 2 {fun {x : Num} : Num x}})  "Type error in expression + position 2: expected Num found {Num -> Num}")
+(test/exn (typecheck '{fun 1})     "Parse error")
+(test/exn (typecheck '{with {x : Num 5} {+ 2 y}})          "Type error: No type for identifier: y")
+(test/exn (typecheck '{{fun {x : Num} : Num {+ x 2}} y})  "Type error: No type for identifier: y")
+(test/exn (typecheck '{{fun {x : Num} : Num {+ x y}} 5})  "Type error: No type for identifier: y")
+(test/exn (typecheck '{fun {x : Num} : {Num -> Num} 10})  "Type error in expression fun position 1: expected {Num -> Num} found Num" )
+
+
+;; deBruijn
+(test (deBruijn (num 3)) (num 3))
+(test (deBruijn (parse '{with {x : Num 5}  {with  {y : Num  {+ x 1}} {+ y x}}}))
+      (app (fun-db (app (fun-db (add (acc 0) (acc 1))) (add (acc 0) (num 1)))) (num 5)))
+(test/exn (deBruijn (parse 'x)) "Free identifier: x")
+
 
