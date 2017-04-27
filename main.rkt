@@ -111,13 +111,6 @@
 
 
 
-;Para una función con el tipo de retorno anotado, se valida que la expresión del
-;     cuerpo tenga el mismo tipo que el tipo de retorno declarado.
-;Para una función sin el tipo de retorno anotado, el tipo resultante considera el tipo calculado del cuerpo de la función.
-;Para la aplicación de función se valida que la expresión en posición de función es efectivamente una función y
-;     que el tipo de la expresión de argumento de la aplicación coincide con el tipo esperado del argumento de la función.
-
-
 
 (define (noFreeId expr)
   (match expr
@@ -168,12 +161,38 @@
 
 
 
-#;(define (DBacc expr idx n)
+(define (DBaccRESp expr idx n)
   (match expr
      [(num n) expr]
      [(add l r) (add (DBacc l idx n) (DBacc r idx n))]
      [(fun id idtype body bodytype) (if (or (equal? id idx) (equal? #f idx))
                                         (fun-db (DBacc body id n));;;;
+                                        (fun-db (DBacc (DBacc body idx (+ n 1)) id n))
+                                        ) ]
+     [(app l r) (app (DBacc l idx n) (DBacc r idx n))]
+    
+     [(id x) (if (equal? #f idx)
+                 (error (string-append "Free identifier: " (type2str expr)))
+                 (if (equal? x idx)
+                     (acc n)
+                     (acc (- n 1))
+                     ))]
+    [else expr]
+    )
+  )
+(define (DBacc expr idx n)
+  (match expr
+     [(num n) expr]
+     [(add l r) (add (DBacc l idx n) (DBacc r idx n))]
+     [(fun id idtype body bodytype) (if (or (equal? id idx) (equal? #f idx))
+                                        (if (app? body)
+                                             (if (fun? (app-fun-id body))
+                                                 (if (equal? id (fun-id (app-fun-id body)))
+                                                     " xdxd man"
+                                                     (fun-db (DBacc body id n)))
+                                                 (fun-db (DBacc body id n)))
+                                            (fun-db (DBacc body id n))
+                                            )
                                         (fun-db (DBacc (DBacc body idx (+ n 1)) id n))
                                         ) ]
      [(app l r) (app (DBacc l idx n) (DBacc r idx n))]
@@ -205,7 +224,7 @@
 
   )
 
-(define (DBacc expr env)
+#;(define (DBacc expr env)
   (match expr
     [(num n) expr]
     [(add l r) (add (DBacc l env) (DBacc r env))]
@@ -221,7 +240,8 @@
 
     [(app l r) (if (fun? l)
                    (if (aEnv? env)
-                       (app (DBacc l env) (DBacc r (aEnv-env env)))
+                       (app (DBacc l env) (DBacc r env))
+                       ;(app (DBacc l env) (DBacc r (aEnv-env env)))
                        (app (DBacc l env) (DBacc r env))
                        )
                    (app (DBacc l env) (DBacc r env)))]
@@ -234,15 +254,15 @@
 
 
 (define (deBruijn expr)
-  ;(DBacc expr #f 0)
-  (DBacc expr (mtEnv))
+  (DBacc expr #f 0)
+  ;(DBacc expr (mtEnv))
   )
 
 
 (parse '{with {x : Num 5}  {with  {x : Num  {+ x 1}} {+ x x}}})
-;(deBruijn (parse '{with {x : Num 5}  {with  {x : Num  {+ x 1}} {+ x x}}}))
-(app (fun-db (app (fun-db (add (acc 0) (acc 0)))     (add (acc 0) (num 1))))
-     (num 5))
+(test (deBruijn (parse '{with {x : Num 5}  {with  {x : Num  {+ x 1}} {+ x x}}}))
+      (app (fun-db (app (fun-db (add (acc 0) (acc 0))) (add (acc 1) (num 1)))) (num 5)))
+      (app (fun-db (app (fun-db (add (acc 0) (acc 0))) (add (acc 0) (num 1)))) (num 5))
 
 
 ;;bs
@@ -357,7 +377,7 @@
 (test (deBruijn (num 3)) (num 3))
 (test (deBruijn (parse '{with {x : Num 5}  {with  {y : Num  {+ x 1}} {+ y x}}}))
       (app (fun-db (app (fun-db (add (acc 0) (acc 1))) (add (acc 0) (num 1)))) (num 5)))
-      (app (fun-db (app (fun-db (add (acc 1) (acc 0))) (add (acc 0) (num 1)))) (num 5)) 
+ ;     (app (fun-db (app (fun-db (add (acc 1) (acc 0))) (add (acc 0) (num 1)))) (num 5)) 
 
 (test/exn (deBruijn (parse 'x)) "Free identifier: x")
 (test (deBruijn (parse '{with {x : Num 5}  {with  {x : Num  {+ x 1}} {+ x x}}}))
@@ -365,7 +385,7 @@
 
 (test (deBruijn (parse '{with {x : Num 5}  {with  {x : Num  {+ x 1}} {+ x x}}}))
       (app (fun-db (app (fun-db (add (acc 0) (acc 0))) (add (acc 1) (num 1)))) (num 5)))
-      (app (fun-db (app (fun-db (add (acc 0) (acc 0))) (add (acc 0) (num 1)))) (num 5))
+;      (app (fun-db (app (fun-db (add (acc 0) (acc 0))) (add (acc 0) (num 1)))) (num 5))
 
 (test  (deBruijn (parse '{{fun {x : Num} : Num {+ 2 1}} 5})) (app (fun-db (add (num 2) (num 1))) (num 5)))
 (test  (deBruijn (parse '{{fun {x : Num} : Num {+ 2 x}} 5})) (app (fun-db (add (num 2) (acc 0))) (num 5)))
