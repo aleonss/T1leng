@@ -57,11 +57,7 @@
  ) )
 
 
-;(define (deBruijn expr)#f)
-(define (compile expr) #f)
-;(define (typeof expr)
-;(define (typecheck s-expr) #f)
-(define (typed-compile s-expr) #f)
+
 
 
 (define (typeof expr)
@@ -161,117 +157,181 @@
 
 
 
-(define (DBaccRESp expr idx n)
-  (match expr
-     [(num n) expr]
-     [(add l r) (add (DBacc l idx n) (DBacc r idx n))]
-     [(fun id idtype body bodytype) (if (or (equal? id idx) (equal? #f idx))
-                                        (fun-db (DBacc body id n));;;;
-                                        (fun-db (DBacc (DBacc body idx (+ n 1)) id n))
-                                        ) ]
-     [(app l r) (app (DBacc l idx n) (DBacc r idx n))]
-    
-     [(id x) (if (equal? #f idx)
-                 (error (string-append "Free identifier: " (type2str expr)))
-                 (if (equal? x idx)
-                     (acc n)
-                     (acc (- n 1))
-                     ))]
-    [else expr]
-    )
-  )
-(define (DBacc expr idx n)
-  (match expr
-     [(num n) expr]
-     [(add l r) (add (DBacc l idx n) (DBacc r idx n))]
-     [(fun id idtype body bodytype) (if (or (equal? id idx) (equal? #f idx))
-                                        (if (app? body)
-                                             (if (fun? (app-fun-id body))
-                                                 (if (equal? id (fun-id (app-fun-id body)))
-                                                     " xdxd man"
-                                                     (fun-db (DBacc body id n)))
-                                                 (fun-db (DBacc body id n)))
-                                            (fun-db (DBacc body id n))
-                                            )
-                                        (fun-db (DBacc (DBacc body idx (+ n 1)) id n))
-                                        ) ]
-     [(app l r) (app (DBacc l idx n) (DBacc r idx n))]
-    
-     [(id x) (if (equal? #f idx)
-                 (error (string-append "Free identifier: " (type2str expr)))
-                 (if (equal? x idx)
-                     (acc n)
-                     (acc (- n 1))
-                     ))]
-    [else expr]
-    )
-  )
+
+
 
 (deftype Env
   (mtEnv)
   (aEnv id env))
 
 
-(define (lookup id env n)
-  (if (aEnv? env)
-      (if (equal? id (aEnv-id env))
-          n
-          (lookup id env (+1 n)))
-      (if (zero? n)
-          0
-          (error (string-append "Free identifier: " (symbol->string id)))
-          ))
 
+
+(define (lookup id env n)
+  (if (mtEnv? env)
+       (error (string-append "Free identifier: " (symbol->string id)))
+       (if (equal? id (aEnv-id env))
+                     n
+                     (lookup id (aEnv-env env) (+ n 1))
+                     ))
   )
 
-#;(define (DBacc expr env)
-  (match expr
-    [(num n) expr]
-    [(add l r) (add (DBacc l env) (DBacc r env))]
-    
-    [(fun id idtype body bodytype) (if (aEnv? env)
-                                       (if  (equal? id (aEnv-id env)) 
-                                             (fun-db (DBacc body env));;;;
-                                             (fun-db (DBacc body (aEnv id env)))
-                                             )
-                                        (fun-db (DBacc body (aEnv id (mtEnv))))
-                                        
-                                         ) ]
 
-    [(app l r) (if (fun? l)
-                   (if (aEnv? env)
-                       (app (DBacc l env) (DBacc r env))
-                       ;(app (DBacc l env) (DBacc r (aEnv-env env)))
-                       (app (DBacc l env) (DBacc r env))
-                       )
-                   (app (DBacc l env) (DBacc r env)))]
+
+(define (isId id env n)
+  (if (mtEnv? env)
+       #f
+       (if (equal? id (aEnv-id env))
+                     n
+                     (isId id (aEnv-env env) (+ n 1))
+                     )))
+
+(define (getenv expr env)
+  (match expr
+    [(fun id idtype body bodytype) (if (isId id env 0)
+                                       (aEnv '() env)
+                                       (aEnv id env))]
+    [else env]
+))  
+
     
-    [(id x) (acc (lookup x env 0)) ]
+(define (setAcc expr env)
+  (match expr
+     [(num n) expr]
+     [(add l r) (add (setAcc  l env) (setAcc r env))]
+     [(fun id idtype body bodytype) (fun id idtype (setAcc body (aEnv id env)) bodytype)]
+     [(app l r) (app (setAcc  l env) (setAcc  r (getenv l env)))]
+
+
+     [(id x) (acc (lookup x env 0))]
     [else expr]
+
+
+    )
+
+ )
+
+(define (DBacc expr)
+  (match expr
+     [(num n) expr]
+     [(add l r) (add (DBacc l) (DBacc r))]
+     [(fun id idtype body bodytype)  (fun-db (DBacc body) )        ]
+     [(app l r) (app (DBacc l) (DBacc r))]
+     [(acc n) expr]
+     [else expr]
     )
   )
 
 
 
 (define (deBruijn expr)
-  (DBacc expr #f 0)
-  ;(DBacc expr (mtEnv))
+   (DBacc (setAcc expr (mtEnv)) )
   )
 
 
-(parse '{with {x : Num 5}  {with  {x : Num  {+ x 1}} {+ x x}}})
-(test (deBruijn (parse '{with {x : Num 5}  {with  {x : Num  {+ x 1}} {+ x x}}}))
-      (app (fun-db (app (fun-db (add (acc 0) (acc 0))) (add (acc 1) (num 1)))) (num 5)))
-      (app (fun-db (app (fun-db (add (acc 0) (acc 0))) (add (acc 0) (num 1)))) (num 5))
+
+;(define (deBruijn expr)#f)
+;(define (compile expr) #f)
+;(define (typeof expr)
+;(define (typecheck s-expr) #f)
+;(define (typed-compile s-expr) #f)
+#;(define (expr2mach expr)
+  (match expr
+    [(num n) (INT-CONST n)]
+    [(app l r)  (cons (expr2mach r)
+                     (cons (expr2mach l)'()))]
+    [(add l r)  (cons (expr2mach r)
+                      (cons(expr2mach l)
+                          (cons (ADD)'())))]
+    [(fun-db body) (CLOSURE (cons (expr2mach body)
+                                  (cons (RETURN) '()))) ]
+    [(acc n) (ACCESS n)]
+    )
+  )
+
+
+
+#;(define (delList lst)
+  (match lst
+    [(list x) (delList x) ]
+    [(list x '()) (delList  x)]
+    [(list (list x ..1) y) (delList (list (delList (car lst))  (delList y)))]
+    [(list x (list y ..1)) (list (delList x) (delList y) )]
+
+    [else lst]
+   ))
+
+(define (delList lst)
+  (match lst
+    [(cons x '()) (delList  x)]
+    [(list (list a ..1) (list b ..1) c ..1) (delList (cons (delList a) (cons (delList b) (cons (delList c) '()))))]
+    [(list (list a ..1) (list b ..1) ) (delList (cons (delList a) (cons (delList b) '())))]
+   ; [(list (list a b) (list c d) ) (delList (cons (delList a) (cons (delList b) (cons (delList c) (cons (delList d) '())))))]
+    [(list (list a ..1) b ..1) (delList (cons  (delList a) (cons  (delList b)'())))]
+    ;[(list (list x y) z ) (delList (cons x (cons y (cons z '()))))]
+
+    [(list a ..1 (list b ..1)) (print b)];(delList (cons  (delList a) (cons  (delList b)'())))]
+  ;  [(list x (list y z)) (delList (cons x (cons y (cons z '()))))]
+    [else lst]
+
+   ))
+
+
+(delList (list 'x))
+(delList (list 'x 'x))
+(delList (list 'x  (list 'x)))
+(delList (list (list 'x) 'x  ))
+(delList (list 'x  (list 'x 'x )))
+(delList (list 'x (list 'x) (list 'x)))
+(delList (list 'x (list 'x 'x) (list (list 'x))))
+
+(define (expr2mach expr)
+  (match expr
+    [(num n)  (INT-CONST n)]
+    [(app l r) (list (expr2mach r)
+                     (expr2mach l))]
+    [(add l r)  (list (expr2mach r)
+                      (expr2mach l)
+                      (ADD))]
+    [(fun-db body) (CLOSURE (list (expr2mach body)
+                                  (RETURN) )) ]
+    [(acc n) (ACCESS n)]
+    )
+  )
+(define (compile expr)
+  ; (cons (expr2mach expr) (cons (APPLY) '()))
+ ; (delList (cons (delList (expr2mach expr)) (cons (APPLY) '())))
+   (delList (list (expr2mach expr)  (APPLY) ))
+  )
+
+
+
+
+(parse '{{fun {x : Num} : Num {+ x 10}} {+ 2 3}})
+   (app (fun 'x (TNum)
+             (add (id 'x) (num 10)) (TNum))
+        (add (num 2) (num 3)))
+
+(deBruijn (parse '{{fun {x : Num} : Num {+ x 10}} {+ 2 3}}))
+
+(app (fun-db (add (acc 0) (num 10))) (add (num 2) (num 3)))
+
+(list
+ (INT-CONST 3)
+ (INT-CONST 2)
+ (ADD)
+ (CLOSURE (list (INT-CONST 10) (ACCESS 0) (ADD) (RETURN)))
+ (APPLY))
+
+(compile (deBruijn (parse '{{fun {x : Num} : Num  {+ x 10}} {+ 2 3}})))
+
+(compile (deBruijn (parse '3)))
+
+
+
 
 
 ;;bs
-
-
-(app (fun-db (app (fun-db (add (acc 0) (acc 0)))
-                  (add (acc 0) (num 1))))
-     (num 5))
-
 
 
 
@@ -376,16 +436,15 @@
 ;; deBruijn
 (test (deBruijn (num 3)) (num 3))
 (test (deBruijn (parse '{with {x : Num 5}  {with  {y : Num  {+ x 1}} {+ y x}}}))
-      (app (fun-db (app (fun-db (add (acc 0) (acc 1))) (add (acc 0) (num 1)))) (num 5)))
- ;     (app (fun-db (app (fun-db (add (acc 1) (acc 0))) (add (acc 0) (num 1)))) (num 5)) 
+      (app (fun-db (app (fun-db (add (acc 0) (acc 1))) (add (acc 1) (num 1)))) (num 5))) ;aaa
+
 
 (test/exn (deBruijn (parse 'x)) "Free identifier: x")
 (test (deBruijn (parse '{with {x : Num 5}  {with  {x : Num  {+ x 1}} {+ x x}}}))
-      (app (fun-db (app (fun-db (add (acc 0) (acc 0))) (add (acc 0) (num 1)))) (num 5)))
+      (app (fun-db (app (fun-db (add (acc 0) (acc 0))) (add (acc 1) (num 1)))) (num 5)))
 
 (test (deBruijn (parse '{with {x : Num 5}  {with  {x : Num  {+ x 1}} {+ x x}}}))
-      (app (fun-db (app (fun-db (add (acc 0) (acc 0))) (add (acc 1) (num 1)))) (num 5)))
-;      (app (fun-db (app (fun-db (add (acc 0) (acc 0))) (add (acc 0) (num 1)))) (num 5))
+      (app (fun-db (app (fun-db (add (acc 0) (acc 0))) (add (acc 1) (num 1)))) (num 5))) ;aaa2
 
 (test  (deBruijn (parse '{{fun {x : Num} : Num {+ 2 1}} 5})) (app (fun-db (add (num 2) (num 1))) (num 5)))
 (test  (deBruijn (parse '{{fun {x : Num} : Num {+ 2 x}} 5})) (app (fun-db (add (num 2) (acc 0))) (num 5)))
@@ -397,7 +456,4 @@
 (test (deBruijn (parse '{with {x : Num 5} x})) (app (fun-db (acc 0)) (num 5)))
 (test (deBruijn (parse '{with {x : Num 5} {+ x 3}})) (app (fun-db (add (acc 0) (num 3))) (num 5)))
 
-;;eeeeeeeeeeeeeaaaaaaaaaaaaaaaa
 
-;(app (fun 'x (TNum) (app (fun     'y (TNum) (add (id 'y) (id 'x)) #f) (add (id 'x) (num 1))) #f) (num 5))
-;(app (fun-db        (app (fun-db            (add (acc 0) (acc 1))   ) (add (acc 0) (num 1)))   ) (num 5))
