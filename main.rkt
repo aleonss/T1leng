@@ -78,7 +78,10 @@
                     (if (and (equal? idtype (TNum)) (noFreeId newbody))
                         (TFun idtype (TNum))
                         (error (string-append "Type error in expression fun position 2: expected " (string-append (type2str idtype) (string-append " found "(type2str newbody ))))))
-                    (error (string-append "Type error in expression fun position 2: expected " (string-append (type2str idtype) (string-append " found "(type2str newbody ))))))
+                  (if (equal?  idtype  (newbody))
+                      (newbody)
+                      (print (newbody)));(error (string-append "Type error in expression fun position 2: expected " (string-append (type2str idtype) (string-append " found "(type2str newbody ))))))
+                )
                 )
             
             (if (and (equal? bodytype idtype) (noFreeId newbody))
@@ -95,9 +98,14 @@
                     (let ([funl (typeof l)])
                       (if (fun? r)
                           (error  (string-append "Type error in expression app position 2: expected "  (string-append (type2str (TFun-arg funl)) (string-append " found {Num -> Num}"))))
-                          (if (equal? (typeof r) (TFun-arg funl))
-                              funl
-                              (error "Type error in expression app position 2: expected "  (string-append (type2str (TFun-arg funl)) (string-append " found " (type2str (typeof r))))))
+                          (if (fun? funl)
+                              (if (equal? (typeof r) (TFun-arg funl))
+                                  funl
+                                  (error "Type error in expression app position 2: expected "  (string-append (type2str (TFun-arg funl)) (string-append " found " (type2str (typeof r))))))
+                              (if (noFreeId r)
+                                  funl
+                                 (error (string-append "Type error: No type for identifier: " (type2str r))))
+                              )
                           )
                       )
                     (error (string-append "Type error in expression app position 1: expected {Num -> Num} found " (type2str l)))
@@ -118,17 +126,31 @@
 (define (replaceFun idx idtype body)
   (match body
     [(id x) (if (equal? x idx) idtype body)]
-    [(add l r) (TFun (replaceFun idx idtype l) (replaceFun idx idtype r))]
+    [(add l r) (if (and (equal? TNum (replaceFun idx idtype l))
+                        (equal? TNum (replaceFun idx idtype r)))
+                   TNum
+                   (TFun (replaceFun idx idtype l) (replaceFun idx idtype r)) ) ]
+
+
+               ;(TFun (replaceFun idx idtype l) (replaceFun idx idtype r))]
     [(fun idx2 idtype2 body2 bodytype2) (if (equal? idx idx2)
-                                            (if (equal? (replaceFun idx2 idtype2 body2 )bodytype2 )
+                                            (if (equal? (replaceFun idx2 idtype2 body2 ) bodytype2 )
                                                 (TFun idtype (replaceFun idx2 idtype2 body2))
-                                                (print (typeof body)))
+                                                (TFun idtype (replaceFun idx idtype body2)))
                                             (if (equal? (typeof body) idtype )
                                                 (TFun idtype (replaceFun idx2 idtype2 body2)) (print (typeof body)))
                                             )]
     [(num n) TNum]
+   [(app l r) (if (fun? l)
+                  (if (equal? (fun-targ l) (typeof r))
+                      (replaceFun idx idtype r)
+                      "error?")
+                  "error")
+    ]
+    ;(replaceFun idx idtype r)] ;?
     )
   )
+
  
 (define (type2str type)
   (match type
@@ -235,103 +257,57 @@
 ;(define (typeof expr)
 ;(define (typecheck s-expr) #f)
 ;(define (typed-compile s-expr) #f)
-#;(define (expr2mach expr)
+
+
+(deftype pila
+  (mtPila)
+  (aPila expr npila))
+
+;C(n) = INT-CONST n
+;C({+ a1 a2}) = C(a2);C(a1);ADD
+;C({f a}) = C(a); C(f); APPLY
+(define (expr2mach expr pila)
   (match expr
-    [(num n) (INT-CONST n)]
-    [(app l r)  (cons (expr2mach r)
-                     (cons (expr2mach l)'()))]
-    [(add l r)  (cons (expr2mach r)
-                      (cons(expr2mach l)
-                          (cons (ADD)'())))]
-    [(fun-db body) (CLOSURE (cons (expr2mach body)
-                                  (cons (RETURN) '()))) ]
-    [(acc n) (ACCESS n)]
+    [(num n)  (aPila (INT-CONST n) pila)]
+    [(acc n)  (aPila (ACCESS n) pila)]
+    [(add l r)  (expr2mach r (expr2mach l (aPila (ADD) pila )))]
+    
+    [(app l r)  (expr2mach r (expr2mach l (aPila (APPLY) pila ))     )]
+    [(fun-db body) (aPila (CLOSURE (expr2mach body (aPila (RETURN) (mtPila))))
+                          pila)]
+
     )
   )
 
-
-
-#;(define (delList lst)
-  (match lst
-    [(list x) (delList x) ]
-    [(list x '()) (delList  x)]
-    [(list (list x ..1) y) (delList (list (delList (car lst))  (delList y)))]
-    [(list x (list y ..1)) (list (delList x) (delList y) )]
-
-    [else lst]
+(define (desApilar pila)
+  (match pila
+    [(mtPila) '()]
+    [(aPila (CLOSURE b) npila)  (cons (CLOSURE (desApilar b)) (desApilar npila)) ]
+    [(aPila expr npila) (cons expr (desApilar npila))]
+    [(CLOSURE b) (cons (CLOSURE (desApilar b)) '()) ]
    ))
 
-(define (delList lst)
-  (match lst
-    [(cons x '()) (delList  x)]
-    [(list (list a ..1) (list b ..1) c ..1) (delList (cons (delList a) (cons (delList b) (cons (delList c) '()))))]
-    [(list (list a ..1) (list b ..1) ) (delList (cons (delList a) (cons (delList b) '())))]
-   ; [(list (list a b) (list c d) ) (delList (cons (delList a) (cons (delList b) (cons (delList c) (cons (delList d) '())))))]
-    [(list (list a ..1) b ..1) (delList (cons  (delList a) (cons  (delList b)'())))]
-    ;[(list (list x y) z ) (delList (cons x (cons y (cons z '()))))]
-
-    [(list a ..1 (list b ..1)) (print b)];(delList (cons  (delList a) (cons  (delList b)'())))]
-  ;  [(list x (list y z)) (delList (cons x (cons y (cons z '()))))]
-    [else lst]
-
-   ))
-
-
-(delList (list 'x))
-(delList (list 'x 'x))
-(delList (list 'x  (list 'x)))
-(delList (list (list 'x) 'x  ))
-(delList (list 'x  (list 'x 'x )))
-(delList (list 'x (list 'x) (list 'x)))
-(delList (list 'x (list 'x 'x) (list (list 'x))))
-
-(define (expr2mach expr)
-  (match expr
-    [(num n)  (INT-CONST n)]
-    [(app l r) (list (expr2mach r)
-                     (expr2mach l))]
-    [(add l r)  (list (expr2mach r)
-                      (expr2mach l)
-                      (ADD))]
-    [(fun-db body) (CLOSURE (list (expr2mach body)
-                                  (RETURN) )) ]
-    [(acc n) (ACCESS n)]
-    )
-  )
 (define (compile expr)
-  ; (cons (expr2mach expr) (cons (APPLY) '()))
- ; (delList (cons (delList (expr2mach expr)) (cons (APPLY) '())))
-   (delList (list (expr2mach expr)  (APPLY) ))
+   (desApilar (expr2mach expr (mtPila))) 
   )
 
-
-
-
-(parse '{{fun {x : Num} : Num {+ x 10}} {+ 2 3}})
-   (app (fun 'x (TNum)
-             (add (id 'x) (num 10)) (TNum))
-        (add (num 2) (num 3)))
-
-(deBruijn (parse '{{fun {x : Num} : Num {+ x 10}} {+ 2 3}}))
-
-(app (fun-db (add (acc 0) (num 10))) (add (num 2) (num 3)))
-
-(list
- (INT-CONST 3)
- (INT-CONST 2)
- (ADD)
- (CLOSURE (list (INT-CONST 10) (ACCESS 0) (ADD) (RETURN)))
- (APPLY))
-
-(compile (deBruijn (parse '{{fun {x : Num} : Num  {+ x 10}} {+ 2 3}})))
-
-(compile (deBruijn (parse '3)))
+(define (typed-compile s-expr)
+  (let* ([parsed (parse s-expr)]
+         [tyof (typeof parsed)]
+         [tych (typecheck s-expr)]
+         )
+    (machine  (compile (deBruijn parsed)))
+  ))
 
 
 
 
+;(test (typed-compile '{with {x : Num 5}  {with  {x : Num  {+ x 1}} {+ x x}}}) 12) ; fun position 2: expected Num found {Num -> Num}"
+;(test (typed-compile '{with {x : Num 5}  {with  {y : Num  {+ x 1}} {+ y x}}} ) 11) ;fun position 2: expected Num found {Num -> Num}
+;(test (typed-compile 'a ) 1)
+;(test/exn (typed-compile 'a ) "")
+;(test (typed-compile '{fun {x : Num} x}) "")   ; (compile (deBruijn (parse  '{fun {x : Num} x})  ))
 
-;;bs
 
 
 
@@ -353,7 +329,6 @@
 (test (parse '{+ 1 3})            (add (num 1) (num 3)))
 (test (parse '{+ 1 {+ 1 1}})      (add (num 1) (add (num 1) (num 1))))
 (test (parse '{+ {+ 1 1} 1})      (add (add (num 1) (num 1)) (num 1) ))
-
 
 (test (parse '{with {y : Num 2} {+ x y}})   (app (fun 'y (TNum) (add (id 'x) (id 'y)) #f)(num 2)))
 (test (parse '{with {x : Num 5} {+ x 3}})  (app (fun 'x (TNum)(add (id 'x) (num 3)) #f)  (num 5)))
@@ -390,6 +365,9 @@
 
 (test (typeof (parse '{{fun {x : Num} : Num {+ 2 x}} 5}) ) (TFun (TNum) (TNum)))                        
 (test (typeof (parse '{with {x : Num 5} {+ 2 x}}) ) (TFun (TNum) (TNum)))
+
+
+(test (typeof (parse '{with {n : Num 4} {{fun {x : Num} {+ x n}} 1}})) (TNum))
 
 (test/exn (typeof (parse '{{fun {x : Num} : Num {+ 2 y}} 5}) )
           "Type error: No type for identifier: y")
@@ -435,11 +413,13 @@
 
 ;; deBruijn
 (test (deBruijn (num 3)) (num 3))
+(test (deBruijn  (parse '{+ 1 {with {x : Num 1}  {with {y : Num 2}   {+ x y}}}}))
+      (add(num 1) (app(fun-db  (app (fun-db (add (acc 1) (acc 0))) (num 2))) (num 1))))
+      
 (test (deBruijn (parse '{with {x : Num 5}  {with  {y : Num  {+ x 1}} {+ y x}}}))
       (app (fun-db (app (fun-db (add (acc 0) (acc 1))) (add (acc 1) (num 1)))) (num 5))) ;aaa
 
 
-(test/exn (deBruijn (parse 'x)) "Free identifier: x")
 (test (deBruijn (parse '{with {x : Num 5}  {with  {x : Num  {+ x 1}} {+ x x}}}))
       (app (fun-db (app (fun-db (add (acc 0) (acc 0))) (add (acc 1) (num 1)))) (num 5)))
 
@@ -452,8 +432,54 @@
 (test  (deBruijn (parse '{{fun {x : Num} : Num {+ 3 {+ x {+ 5 {+ 2 x}}}}} 5}))  (app (fun-db (add (num 3) (add (acc 0) (add (num 5) (add (num 2) (acc 0)))))) (num 5)))
 
 
-
 (test (deBruijn (parse '{with {x : Num 5} x})) (app (fun-db (acc 0)) (num 5)))
 (test (deBruijn (parse '{with {x : Num 5} {+ x 3}})) (app (fun-db (add (acc 0) (num 3))) (num 5)))
+
+(test/exn (deBruijn (parse 'x)) "Free identifier: x")
+
+;; compile
+(test (compile (deBruijn (parse '{{fun {x : Num} : Num  {+ x 10}} {+ 2 3}})))
+      (list
+       (INT-CONST 3)
+       (INT-CONST 2)
+       (ADD)
+       (CLOSURE (list (INT-CONST 10) (ACCESS 0) (ADD) (RETURN)))
+       (APPLY)) )
+
+(test (compile (deBruijn (parse '3))) (list (INT-CONST 3)))
+
+;;typed-compile
+(test (typed-compile '{+ 1 3}) 4)
+(test (typed-compile '{+ {+ 1 1} 1}) 3)
+(test (typed-compile '{with {x : Num 5} {+ x 3}} ) 8)
+(test (typed-compile '{{fun {x : Num} : Num {+ 2 1}} 5}) 3)
+(test (typed-compile '{with {x : Num 5} {+ 2 x}}) 7)
+(test (typed-compile  '{{fun {x : Num} : Num {+ 2 3}} 5})  5) 
+(test (typed-compile  '{{fun {x : Num} : Num {+ 2 x}} 5} ) 7)
+(test (typed-compile  '{{fun {x : Num} : Num {+ 2 x}} {+ 2 3}} ) 7)
+(test (typed-compile '{with {n : Num 4} {{fun {x : Num}{+ x n}} 1}}) 5)
+(test (typed-compile  '{with {x : Num 5} x}) 5)
+
+(test (typed-compile  '{with {x : Num 5} {+ 2 3}})  5)                
+(test (typed-compile  '{with {x : Num 5} {+ 2 x}}) 7)
+
+(test/exn (typed-compile 'a ) "Type error: No type for identifier: a")
+(test/exn (typed-compile '{+ 1}) "Parse error")
+(test/exn (typeof (parse '{{fun {x : Num} : Num {+ 2 y}} 5}) )
+          "Type error: No type for identifier: y")
+(test/exn (typed-compile '{+ 2 {fun {x : Num} : Num x}})  "Type error in expression + position 2: expected Num found {Num -> Num}")
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
